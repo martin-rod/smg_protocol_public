@@ -114,3 +114,9 @@ The protocol is Modbus RTU via RS232.
 | Remote switch                                          |          |  Uint |  420 |  1  | R/W | 0: Remote shutdown<br>1: Remote turn-on |
 | Exit the fault mode                                    |          |  Uint |  426 |     |  W  | 1: Exit the fault state (only when the inverter enters the fault mode, it could be available) |
 | Rated Power                                            |  W       |  Uint |  643 |  1  |  R  | |
+
+## Interesting pages
+
+* https://www.srnesolar.com/product/Solar-Storage-Inverters.html
+* https://voltronicpower.com/en-US/Product/PV-Inverter/Off-Grid-Inverter
+
