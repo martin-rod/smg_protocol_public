@@ -726,26 +726,28 @@ test_cmds = {
 }
 
 
-def print_register(register, name, vals):
+def print_register(register_address, register, name, vals):
     if (vals['result_type'] == 'u16' or vals['result_type'] == 'i16') and len(vals['result_enum']) > 0:
         if register < 0:
-            print("{} - '{}':{} enum('error negative index')".format(name, vals['description'], register))
+            print("{} - {} - '{}':{} enum('error negative index')".format(register_address, name, vals['description'],
+                                                                          register))
         else:
-            print("{} - '{}':{} enum({})".format(name, vals['description'], register, vals['result_enum'][register]))
+            print("{} - {} - '{}':{} enum({})".format(register_address, name, vals['description'], register,
+                                                      vals['result_enum'][register]))
     else:
-        print("{} - '{}':{} [{}]".format(name, vals['description'], register, vals['unit']))
+        print("{} - {} - '{}':{} [{}]".format(register_address, name, vals['description'], register, vals['unit']))
 
 
-def print_registers(registers, name, vals):
+def print_registers(register_address, registers, name, vals):
     if vals['result_type'] == 'char':
         registers_hex = ""
         for register in registers:
             registers_hex += hex(register >> 8) + ' ' + hex(register & 0xFF) + ' '
-        print("{} - '{}':hex({})".format(name, vals['description'], registers_hex))
+        print("{} - {} - '{}':hex({})".format(register_address, name, vals['description'], registers_hex))
         registers_ascii = ""
         for register in registers:
             registers_ascii += chr(register >> 8) + ' ' + chr(register & 0xFF) + ' '
-        print("{} - '{}':char({})".format(name, vals['description'], registers_ascii))
+        print("{} - {} - '{}':char({})".format(register_address, name, vals['description'], registers_ascii))
     elif (vals['result_type'] == 'u32' or vals['result_type'] == 'i32') and len(vals['result_enum']) > 0:
         registers_hex = ""
         for register in registers:
@@ -755,11 +757,14 @@ def print_registers(registers, name, vals):
             int_signed = True
         registers_int = int.from_bytes(registers, "big", signed=int_signed)
         if registers_int < 0:
-            print("{} - '{}':hex({}) val({}) enum('error negative index')".format(name, vals['description'],
-                                                                                  registers_hex, registers_int))
+            print("{} - {} - '{}':hex({}) val({}) enum('error negative index')".format(register_address, name,
+                                                                                       vals['description'],
+                                                                                       registers_hex, registers_int))
         else:
-            print("{} - '{}':hex({}) val({}) enum({})".format(name, vals['description'], registers_hex, registers_int,
-                                                              vals['result_enum'][registers_int]))
+            print("{} - {} - '{}':hex({}) val({}) enum({})".format(register_address, name, vals['description'],
+                                                                   registers_hex,
+                                                                   registers_int,
+                                                                   vals['result_enum'][registers_int]))
     elif (vals['result_type'] == 'u32') and len(vals['result_bits']) > 0:
         registers_hex = ""
         registers_ba = bytearray(0)
@@ -772,10 +777,12 @@ def print_registers(registers, name, vals):
         for n in range(32):
             if registers_int & (1 << n):
                 registers_text += "'" + vals['result_bits'][n] + "' "
-        print("{} - '{}':hex({}) val({}) bits({})".format(name, vals['description'], registers_hex, registers_int,
-                                                          registers_text))
+        print(
+            "{} - {} - '{}':hex({}) val({}) bits({})".format(register_address, name, vals['description'], registers_hex,
+                                                             registers_int,
+                                                             registers_text))
     else:
-        print("{} - '{}':{} [{}]".format(name, vals['description'], registers, vals['unit']))
+        print("{} - {} - '{}':{} [{}]".format(register_address, name, vals['description'], registers, vals['unit']))
 
 
 def test_read_example_with_values():
@@ -784,12 +791,20 @@ def test_read_example_with_values():
     for name, vals in test_cmds.items():
         try:
             if len(vals['cmd_read_register']) > 0:
-                register = instr.read_register(*vals['cmd_read_register'])
-                print_register(register, name, vals)
+                register_address: int = vals['cmd_read_register'][0]
+                number_of_decimals: int = vals['cmd_read_register'][1]
+                function_code: int = vals['cmd_read_register'][2]
+                signed: bool = vals['cmd_read_register'][3]
+                register = instr.read_register(register_address, number_of_decimals, function_code,
+                                               signed)
+                print_register(register_address, register, name, vals)
 
             elif len(vals['cmd_read_registers']) > 0:
-                registers = instr.read_registers(*vals['cmd_read_registers'])
-                print_registers(registers, name, vals)
+                register_address: int = vals['cmd_read_registers'][0]
+                number_of_registers: int = vals['cmd_read_registers'][1]
+                function_code: int = vals['cmd_read_registers'][2]
+                registers = instr.read_registers(register_address, number_of_registers, function_code)
+                print_registers(register_address, registers, name, vals)
 
         except IOError:
             print("Failed to read from device - {}".format(name))
@@ -800,7 +815,7 @@ def test_read_example_with_values():
 
 if __name__ == "__main__":
     try:
-        instr = minimalmodbus.Instrument('/dev/ttyUSB0', 1)
+        instr = minimalmodbus.Instrument('/dev/ttyUSB1', 1)
         instr.serial.baudrate = 9600
         instr.serial.parity = serial.PARITY_NONE
         instr.serial.timeout = 1
