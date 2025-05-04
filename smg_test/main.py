@@ -762,9 +762,12 @@ def print_registers(registers, name, vals):
                                                               vals['result_enum'][registers_int]))
     elif (vals['result_type'] == 'u32') and len(vals['result_bits']) > 0:
         registers_hex = ""
+        registers_ba = bytearray(0)
         for register in registers:
             registers_hex += hex(register >> 8) + ' ' + hex(register & 0xFF) + ' '
-        registers_int = int.from_bytes(registers, "big")
+            registers_ba.append(register >> 8)
+            registers_ba.append(register & 0xFF)
+        registers_int = int.from_bytes(registers_ba, "big")
         registers_text = ""
         for n in range(32):
             if registers_int & (1 << n):
