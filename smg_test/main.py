@@ -2,6 +2,8 @@
 import minimalmodbus
 import serial
 
+import argparse
+
 
 # https://github.com/syssi/esphome-smg-ii
 # https://minimalmodbus.readthedocs.io/en/stable/readme.html
@@ -551,7 +553,7 @@ test_cmds = {
         'description': 'Output frequency',
         'unit': 'Hz',
     },
-    'battery_overvoltage_protection_point': {
+    'battery_over_voltage_protection_point': {
         'cmd_read_register': (323, 1, 3, False),
         'cmd_read_registers': (),
         'result_type': 'u16',
@@ -601,7 +603,7 @@ test_cmds = {
         'description': 'Battery low voltage protection point in mains mode',
         'unit': 'V',
     },
-    'battery_low_voltage_protection_point_in_off-grid_mode': {
+    'battery_low_voltage_protection_point_in_off_grid_mode': {
         'cmd_read_register': (329, 1, 3, False),
         'cmd_read_registers': (),
         'result_type': 'u16',
@@ -617,7 +619,8 @@ test_cmds = {
         'result_type': 'u16',
         'result_length': 1,
         'result_enum': {0: "Utility priority",
-                        1: "PV priority", 2: "PV is at the same level as the Utility",
+                        1: "PV priority",
+                        2: "PV is at the same level as the Utility",
                         3: "Only PV charging is allowed", },
         'result_bits': {},
         'description': 'Battery charging priority',
@@ -654,7 +657,7 @@ test_cmds = {
         'unit': 'V',
     },
     'bat_eq_time': {
-        'cmd_read_register': (334, 0, 3, False),
+        'cmd_read_register': (335, 0, 3, False),
         'cmd_read_registers': (),
         'result_type': 'u16',
         'result_length': 1,
@@ -691,7 +694,8 @@ test_cmds = {
         'result_enum': {
             0: "Can be turn-on locally or remotely",
             1: "Only local turn-on",
-            2: "Only remote turn-on"},
+            2: "Only remote turn-on"
+        },
         'result_bits': {},
         'description': 'Turn on mode',
         'unit': '-',
@@ -765,29 +769,32 @@ def print_registers(register_address, registers, name, vals):
                                                                    registers_hex,
                                                                    registers_int,
                                                                    vals['result_enum'][registers_int]))
-    elif (vals['result_type'] == 'u32') and len(vals['result_bits']) > 0:
-        registers_hex = ""
-        registers_ba = bytearray(0)
-        for register in registers:
-            registers_hex += hex(register >> 8) + ' ' + hex(register & 0xFF) + ' '
-            registers_ba.append(register >> 8)
-            registers_ba.append(register & 0xFF)
-        registers_int = int.from_bytes(registers_ba, "big")
-        registers_text = ""
-        for n in range(32):
-            if registers_int & (1 << n):
-                registers_text += "'" + vals['result_bits'][n] + "' "
-        print(
-            "{} - {} - '{}':hex({}) val({}) bits({})".format(register_address, name, vals['description'], registers_hex,
-                                                             registers_int,
-                                                             registers_text))
+    elif vals['result_type'] == 'u32':
+        if len(vals['result_bits']) > 0:
+            registers_hex = ""
+            registers_ba = bytearray(0)
+            for register in registers:
+                registers_hex += hex(register >> 8) + ' ' + hex(register & 0xFF) + ' '
+                registers_ba.append(register >> 8)
+                registers_ba.append(register & 0xFF)
+            registers_int = int.from_bytes(registers_ba, "big")
+            registers_text = ""
+            for n in range(32):
+                if registers_int & (1 << n):
+                    if n in vals['result_bits'].keys():
+                        registers_text += "'" + vals['result_bits'][n] + "' "
+            print(
+                "{} - {} - '{}':hex({}) val({}) bits({})".format(register_address, name, vals['description'],
+                                                                 registers_hex,
+                                                                 registers_int,
+                                                                 registers_text))
     else:
         print("{} - {} - '{}':{} [{}]".format(register_address, name, vals['description'], registers, vals['unit']))
 
 
 def test_read_example_with_values():
-    instr.debug = False
-    # instr.debug = True
+    # instr.debug = False
+    instr.debug = True
     for name, vals in test_cmds.items():
         try:
             if len(vals['cmd_read_register']) > 0:
@@ -813,19 +820,207 @@ def test_read_example_with_values():
             exit(1)
 
 
-if __name__ == "__main__":
-    try:
-        instr = minimalmodbus.Instrument('/dev/ttyUSB1', 1)
-        instr.serial.baudrate = 9600
-        instr.serial.parity = serial.PARITY_NONE
-        instr.serial.timeout = 1
-        instr.debug = True
-    except IOError:
-        print("Failed to open device")
-        exit(1)
-    except Exception as err:
-        print(f"Failed to open device {err=}, {type(err)=}")
-        exit(1)
+def print_register_description(register_address, name, vals):
+    print("{}\t{}\t'{}'\t[{}]".format(register_address, name, vals['description'], vals['unit']))
 
-    # test_read_example()
-    test_read_example_with_values()
+
+def print_registers_description(register_address, name, vals):
+    print("{}\t{}\t'{}'\t[{}]".format(register_address, name, vals['description'], vals['unit']))
+
+
+def snake_case_to_camel_case_low(snake_case_string):
+    tmp = snake_case_string.split('_')
+    camel_case = tmp[0] + ''.join(word.capitalize() for word in tmp[1:])
+    return camel_case
+
+
+def snake_case_to_camel_case(snake_case_string):
+    tmp = snake_case_string.split('_')
+    camel_case = ''.join(word.capitalize() for word in tmp)
+    return camel_case
+
+
+def print_enum(output_path: str, output_file_enum: str):
+    print("output_path:{} output_file_enum:{}".format(output_path, output_file_enum))
+    smg_register_address_dict = {}
+    smg_address_name_dict = {}
+    for name, vals in test_cmds.items():
+        try:
+            if len(vals['cmd_read_register']) > 0:
+                register_address: int = vals['cmd_read_register'][0]
+                number_of_decimals: int = vals['cmd_read_register'][1]
+                function_code: int = vals['cmd_read_register'][2]
+                signed: bool = vals['cmd_read_register'][3]
+                result_str = "{} = {},".format(snake_case_to_camel_case(name), register_address)
+                smg_register_address_dict.update({register_address: result_str})
+            elif len(vals['cmd_read_registers']) > 0:
+                register_address: int = vals['cmd_read_registers'][0]
+                number_of_registers: int = vals['cmd_read_registers'][1]
+                function_code: int = vals['cmd_read_registers'][2]
+                result_str = "{} = {},".format(snake_case_to_camel_case(name), register_address)
+                smg_register_address_dict.update({register_address: result_str})
+        except Exception as error:
+            print(f"Exception {error=}, {type(error)=}")
+            exit(1)
+
+    smg_register_dict = {}
+    address_index = 0
+    for name, vals in test_cmds.items():
+        number_of_registers: int = 0
+        register_name: str = ""
+        register_address: int = 0
+        result_precision: int = 0
+        try:
+            if len(vals['cmd_read_register']) > 0:
+                register_address: int = vals['cmd_read_register'][0]
+                result_precision: int = vals['cmd_read_register'][1]
+                function_code: int = vals['cmd_read_register'][2]
+                signed: bool = vals['cmd_read_register'][3]
+                number_of_registers = 1
+            elif len(vals['cmd_read_registers']) > 0:
+                register_address: int = vals['cmd_read_registers'][0]
+                number_of_registers: int = vals['cmd_read_registers'][1]
+                function_code: int = vals['cmd_read_registers'][2]
+            else:
+                continue
+
+        except Exception as error:
+            print(f"Exception {error=}, {type(error)=}")
+            exit(1)
+
+        result_type = vals['result_type']
+        register_name = snake_case_to_camel_case(name)
+        description = vals['description']
+        unit = vals['unit']
+        enum_text = ""
+        for n in vals['result_enum'].keys():
+            enum_text += "{}:'{}',".format(n, vals['result_enum'][n])
+        enum_text = enum_text.rstrip(",")
+        bit_text = ""
+        for n in vals['result_bits'].keys():
+            bit_text += "{}:'{}',".format(n, vals['result_bits'][n])
+        bit_text = bit_text.rstrip(",")
+
+        result_str = ""
+        result_str += "  SmgRegisterInformation {\n"
+        result_str += "    register_address: SmgRegisterAddress::{}, // address:{}\n".format(register_name,
+                                                                                             register_address)
+        result_str += "    register_count: {},\n".format(number_of_registers)
+        result_str += "    result_type: SmgResultType::{},\n".format(result_type.upper())
+        result_str += "    result_precision: {},\n".format(result_precision)
+        result_str += "    description: \"{}\",\n".format(description)
+        result_str += "    unit: \"{}\",\n".format(unit)
+        result_str += "    enum_text: \"{}\",\n".format(enum_text)
+        result_str += "    bit_text: \"{}\",\n".format(bit_text)
+        result_str += "  },"
+        smg_register_dict.update({register_address: result_str})
+        smg_address_name_dict.update({register_address: register_name})
+
+    output_code = ""
+    output_code += "#[derive(Clone,Debug)]\n"
+    output_code += "pub enum SmgRegisterAddress {\n"
+    for x in sorted(smg_register_address_dict.keys()):
+        output_code += "  {}\n".format(smg_register_address_dict[x])
+    output_code += "}\n"
+    output_code += "\n"
+
+    output_code += "#[derive(Debug)]\n"
+    output_code += "pub enum SmgResultType {\n"
+    output_code += "  I16,I32,U16,U32,CHAR\n"
+    output_code += "}\n"
+    output_code += "\n"
+
+    output_code += "#[derive(Debug)]\n"
+    output_code += "pub struct SmgRegisterInformation {\n"
+    output_code += "  pub register_address: SmgRegisterAddress,\n"
+    output_code += "  pub register_count: u8,\n"
+    output_code += "  pub result_type: SmgResultType,\n"
+    output_code += "  pub result_precision: u8,\n"
+    output_code += "  pub description: &'static str,\n"
+    output_code += "  pub unit: &'static str,\n"
+    output_code += "  pub enum_text: &'static str,\n"
+    output_code += "  pub bit_text: &'static str,\n"
+    output_code += "}\n"
+    output_code += "\n"
+
+    output_code += "pub const SMG_REGISTERS: [SmgRegisterInformation; {}] = [\n".format(
+        len(smg_register_dict))
+    for x in sorted(smg_register_dict.keys()):
+        output_code += "{}\n".format(smg_register_dict[x])
+    output_code += "];\n"
+    output_code += "\n"
+
+    output_code += "pub fn get_register_information<'a>(\n"
+    output_code += "    address: SmgRegisterAddress,\n"
+    output_code += ") -> &'a SmgRegisterInformation {\n"
+    output_code += "    match address {\n"
+
+    address_index = 0
+    for x in sorted(smg_address_name_dict.keys()):
+        output_code += "        SmgRegisterAddress::{} => &SMG_REGISTERS[{}],\n".format(
+            smg_address_name_dict[x],
+            address_index)
+        address_index += 1
+    output_code += "    }\n"
+    output_code += "}\n"
+
+    if output_path == "":
+        print(output_code)
+    else:
+        file_name = output_path + "/" + output_file_enum
+        with open(file_name, "w") as f:
+            f.write(output_code)
+
+
+def print_description():
+    for name, vals in test_cmds.items():
+        try:
+            if len(vals['cmd_read_register']) > 0:
+                register_address: int = vals['cmd_read_register'][0]
+                number_of_decimals: int = vals['cmd_read_register'][1]
+                function_code: int = vals['cmd_read_register'][2]
+                signed: bool = vals['cmd_read_register'][3]
+                print_register_description(register_address, name, vals)
+
+            elif len(vals['cmd_read_registers']) > 0:
+                register_address: int = vals['cmd_read_registers'][0]
+                number_of_registers: int = vals['cmd_read_registers'][1]
+                function_code: int = vals['cmd_read_registers'][2]
+                print_registers_description(register_address, name, vals)
+        except Exception as error:
+            print(f"Exception {error=}, {type(error)=}")
+            exit(1)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("cmd", choices=['print_enum', 'print_description', 'read_data'], nargs='?',
+                        default="print_enum")
+    parser.add_argument("--output_path", nargs='?',
+                        default="")
+    parser.add_argument("--output_file_enum", nargs='?',
+                        default="smg_register.rs")
+    args = parser.parse_args()
+
+    cmd = args.cmd
+
+    if cmd == "print_enum":
+        print_enum(args.output_path, args.output_file_enum)
+    elif cmd == "print_description":
+        print_description()
+    elif cmd == "read_data":
+        try:
+            instr = minimalmodbus.Instrument('/dev/ttyUSB1', 1)
+            instr.serial.baudrate = 9600
+            instr.serial.parity = serial.PARITY_NONE
+            instr.serial.timeout = 1
+            instr.debug = True
+        except IOError:
+            print("Failed to open device")
+            exit(1)
+        except Exception as err:
+            print(f"Failed to open device {err=}, {type(err)=}")
+            exit(1)
+
+        # test_read_example()
+        test_read_example_with_values()
